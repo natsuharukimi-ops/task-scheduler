@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <script src="https://unpkg.com/vue@3"></script>
+
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            font-family: sans-serif;
+            user-select: none;
+        }
+
+        #app {
+            display: flex;
+            width: 100%;
+        }
+
+        .toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 10px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            z-index: 3000;
+        }
+
+        /* ★スクロール追加 */
+        .timeline {
+            flex: 1;
+            position: relative;
+            border-right: 1px solid #ccc;
+            margin-top: 44px;
+            overflow-y: auto;
+        }
+
+        /* ★中身の高さを確保 */
+        .timeline-inner {
+            position: relative;
+        }
+
+        .panel {
+            flex: 1;
+            padding: 12px;
+            overflow: auto;
+            margin-top: 44px;
+        }
+
+        .time-line {
+            position: absolute;
+            width: 100%;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .now-line {
+            position: absolute;
+            width: 100%;
+            border-top: 2px solid red;
+            z-index: 2000;
+        }
+
+        .task {
+            position: absolute;
+            left: 60px;
+            right: 10px;
+            border-radius: 8px;
+            padding: 6px;
+            cursor: grab;
+            box-sizing: border-box;
+            border: 1px solid #333;
+        }
+
+        .task.dragging {
+            opacity: 0.7;
+            z-index: 1000;
+        }
+
+        .task.idle {
+            background: #cfe8ff;
+        }
+
+        .task.running {
+            background: #ffc0cb;
+        }
+
+        .task.paused {
+            background: #ffd580;
+        }
+
+        .task.done {
+            background: #c8f7c5;
+        }
+
+        .task .delete-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+        }
+
+        .timer-box {
+            border-radius: 10px;
+            margin-top: 10px;
+            padding: 10px;
+            position: relative;
+            border: 1px solid #ccc;
+        }
+
+        .timer-box.idle {
+            background: #cfe8ff;
+        }
+
+        .timer-box.running {
+            background: #ffc0cb;
+        }
+
+        .timer-box.paused {
+            background: #ffd580;
+        }
+
+        .timer-box.done {
+            background: #c8f7c5;
+        }
+
+        .timer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .timer-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-main {
+            background: #4cafef;
+            color: white;
+        }
+
+        .btn-sub {
+            background: #ccc;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .delete-btn {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: none;
+            background: #eee;
+            cursor: pointer;
+        }
+
+        .progress {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+        }
+
+        .bar {
+            height: 100%;
+            background: #333;
+            border-radius: 4px;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .weight-btn {
+            margin: 5px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        .weight-btn.active {
+            background: #4cafef;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+
+        <div class="toolbar">
+            <button class="btn btn-main" @click="openModal">+ Add</button>
+            <button class="btn btn-sub" @click="undo">Undo</button>
+            <button class="btn btn-sub" @click="redo">Redo</button>
+            <button class="btn btn-sub" @click="exportFile">Save</button>
+            <input type="file" ref="fileInput" style="display:none" @change="importFile">
+            <button class="btn btn-sub" @click="triggerImport">Load</button>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+                <input type="date" v-model="store.selectedDate" class="btn btn-sub" style="font-size:16px;">
+            </div>
+        </div>
+
+        <!-- ★ここだけ構造追加 -->
+        <div class="timeline" @mousemove="onMove" @mouseup="onUp">
+            <div class="timeline-inner" :style="{height:(dayEnd-dayStart)*pxPerMin+'px'}">
+
+                <div v-for="h in 16" class="time-line" :style="{top:((h-1)*60*pxPerMin)+'px'}">
+                    {{6+h-1}}:00
+                </div>
+
+                <div class="now-line" :style="{top:nowPos+'px'}"></div>
+
+                <div v-for="t in tasks" class="task" :class="[status(t), {dragging:t.dragging}]" :style="style(t)"
+                    @mousedown="onDown($event,t)">
+
+                    <button class="delete-btn" @mousedown.stop @click="removeTask(t)">×</button>
+                    {{t.name}}
+                </div>
+
+            </div>
+        </div>
+
+        <div class="panel">
+            <div v-for="t in sortedTasks" class="timer-box" :class="status(t)">
+                <div class="timer-header" @click="toggle(t)">
+                    <div class="timer-title">
+                        <span>{{ t.collapsed ? '▶' : '▼' }}</span>
+                        <b>{{t.name}}</b>
+                    </div>
+                    <button class="delete-btn" @click.stop="removeTask(t)">×</button>
+                </div>
+
+                <div v-if="!t.collapsed">
+                    <div>状態: {{statusText(t)}}</div>
+                    <div>開始: {{fmtHM(t.start)}} / 終了: {{fmtHM(t.end)}}</div>
+                    <div>経過: {{fmt(elapsed(t))}}</div>
+                    <div>残り: {{fmt(remain(t))}}</div>
+
+                    <div class="progress">
+                        <div class="bar" :style="{width:(prog(t)*100)+'%'}"></div>
+                    </div>
+
+                    <button class="btn btn-success" @click="start(t)">開始</button>
+                    <button class="btn btn-sub" @click="pause(t)">中断</button>
+                    <button class="btn btn-main" @click="resume(t)">再開</button>
+                    <button class="btn btn-danger" @click="finish(t)">完了</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="show" class="modal">
+            <div class="modal-box">
+                <input v-model="name" placeholder="タスク名"><br>
+
+                <button class="weight-btn" :class="{active:w==='light'}" @click="w='light'">軽</button>
+                <button class="weight-btn" :class="{active:w==='medium'}" @click="w='medium'">中</button>
+                <button class="weight-btn" :class="{active:w==='heavy'}" @click="w='heavy'">重</button>
+
+                <br><br>
+                <button class="btn btn-main" @click="create">OK</button>
+                <button class="btn btn-sub" @click="show=false">Cancel</button>
+            </div>
+        </div>
+
+    </div>
+    <!-- 変更なしなので省略（HTML/CSS同じ） -->
+
+    <script>
+        const { createApp, ref, computed, onMounted, onBeforeUnmount } = Vue
+
+        createApp({
+            setup() {
+
+                const STORAGE_KEY = "task-scheduler-state"
+
+                const pxPerMin = 1.2
+                const dayStart = 360
+                const dayEnd = 1260
+
+                const tasks = ref([])
+                let id = 1
+
+                const fileInput = ref(null)
+
+                const undoStack = ref([])
+                const redoStack = ref([])
+
+                const store = ref({
+                    selectedDate: getToday(),
+                    days: {}
+                })
+
+                function getToday() {
+                    const d = new Date()
+                    const yyyy = d.getFullYear()
+                    const mm = String(d.getMonth() + 1).padStart(2, "0")
+                    const dd = String(d.getDate()).padStart(2, "0")
+                    return `${yyyy}-${mm}-${dd}`
+                }
+
+                // =========================
+                // localStorage utilities
+                // =========================
+                function saveState() {
+                    const state = {
+                        tasks: tasks.value,
+                        id
+                    }
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+                }
+
+                function loadState() {
+                    const raw = localStorage.getItem(STORAGE_KEY)
+                    if (!raw) return
+
+                    try {
+                        const state = JSON.parse(raw)
+
+                        tasks.value = state.tasks || []
+                        id = state.id || 1
+                        undoStack.value = []
+                        redoStack.value = []
+
+                    } catch (e) {
+                        console.warn("localStorage load failed", e)
+                    }
+                }
+
+                const snapshot = () => JSON.stringify(
+                    tasks.value.map(({ dragging, ...rest }) => rest)
+                )
+
+                function saveHistory() {
+                    const cur = snapshot()
+                    if (cur === undoStack.value.at(-1)) return
+                    undoStack.value.push(cur)
+                    redoStack.value = []
+
+                    saveState()
+                }
+
+                function undo() {
+                    if (!undoStack.value.length) return
+                    redoStack.value.push(snapshot())
+                    tasks.value = JSON.parse(undoStack.value.pop())
+
+                    saveState()
+                }
+
+                function redo() {
+                    if (!redoStack.value.length) return
+                    undoStack.value.push(snapshot())
+                    tasks.value = JSON.parse(redoStack.value.pop())
+
+                    saveState()
+                }
+
+                function exportFile() {
+                    const state = {
+                        tasks: tasks.value,
+                        undoStack: undoStack.value,
+                        redoStack: redoStack.value,
+                        id
+                    }
+
+                    const blob = new Blob(
+                        [JSON.stringify(state, null, 2)],
+                        { type: "application/json" }
+                    )
+
+                    const url = URL.createObjectURL(blob)
+
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = "task-scheduler.json"
+                    a.click()
+
+                    URL.revokeObjectURL(url)
+                }
+
+                function importFile(e) {
+                    const file = e.target.files[0]
+                    if (!file) return
+
+                    const reader = new FileReader()
+
+                    reader.onload = (ev) => {
+                        try {
+                            const state = JSON.parse(ev.target.result)
+
+                            saveHistory()
+
+                            tasks.value = state.tasks || []
+                            id = state.id || 1
+
+                            saveState()
+                        } catch (err) {
+                            alert("読み込み失敗")
+                        }
+                    }
+
+                    reader.readAsText(file)
+                }
+
+                function triggerImport() {
+                    fileInput.value.value = ""
+                    fileInput.value?.click()
+                }
+
+                function handleKey(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                        e.shiftKey ? redo() : undo()
+                        e.preventDefault()
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                        redo()
+                        e.preventDefault()
+                    }
+                }
+
+                const now = ref(Date.now())
+                setInterval(() => now.value = Date.now(), 1000)
+
+                const nowPos = computed(() => {
+                    const d = new Date(now.value)
+                    return ((d.getHours() * 60 + d.getMinutes()) - dayStart) * pxPerMin
+                })
+
+                const sortedTasks = computed(() =>
+                    [...tasks.value].sort((a, b) => a.start - b.start)
+                )
+
+                const show = ref(false)
+                const name = ref("")
+                const w = ref("medium")
+
+                function openModal() {
+                    show.value = true
+                    name.value = ""
+                }
+
+                function toggle(t) { t.collapsed = !t.collapsed }
+
+                let systemBackup = null
+
+                function restore() {
+                    if (!systemBackup) return
+                    tasks.value = JSON.parse(systemBackup)
+                    saveState()
+                }
+
+                function resolveCopy(list, drag) {
+                    const sorted = [...list].sort((a, b) => a.start - b.start)
+                    const idx = sorted.findIndex(t => t.id === drag.id)
+
+                    let prev = sorted[idx]
+                    for (let i = idx - 1; i >= 0; i--) {
+                        const t = sorted[i]
+                        if (t.end > prev.start) {
+                            t.start = prev.start - t.duration
+                            t.end = t.start + t.duration
+                        }
+                        prev = t
+                    }
+
+                    let next = sorted[idx]
+                    for (let i = idx + 1; i < sorted.length; i++) {
+                        const t = sorted[i]
+                        if (t.start < next.end) {
+                            t.start = next.end
+                            t.end = t.start + t.duration
+                        }
+                        next = t
+                    }
+
+                    return sorted
+                }
+
+                function outOfRange(list) {
+                    return list.some(t => t.start < dayStart || t.end > dayEnd)
+                }
+
+                function create() {
+
+                    const map = { light: 30, medium: 60, heavy: 90 }
+                    const dur = map[w.value]
+
+                    const sorted = [...tasks.value].sort((a, b) => a.start - b.start)
+
+                    let start = null
+
+                    for (let i = sorted.length - 1; i >= 0; i--) {
+                        const cur = sorted[i]
+                        const next = sorted[i + 1]
+
+                        const gapEnd = next ? next.start : dayEnd
+                        const gapStart = cur.end
+
+                        if (gapEnd - gapStart >= dur) {
+                            start = gapStart
+                            break
+                        }
+                    }
+
+                    if (start === null) {
+                        const first = sorted[0]
+                        const gapEnd = first ? first.start : dayEnd
+
+                        if (gapEnd - dayStart >= dur) {
+                            start = dayStart
+                        }
+                    }
+
+                    if (start === null) {
+                        alert("空きなし")
+                        return
+                    }
+
+                    saveHistory()
+
+                    tasks.value.push({
+                        id: id++,
+                        name: name.value,
+                        duration: dur,
+                        start,
+                        end: start + dur,
+                        logs: [],
+                        running: false,
+                        lastStart: null,
+                        done: false,
+                        dragging: false,
+                        collapsed: false
+                    })
+
+                    saveState()
+                    show.value = false
+                }
+
+                function removeTask(t) {
+                    if (!confirm(`「${t.name}」を削除しますか？`)) return
+                    saveHistory()
+                    tasks.value = tasks.value.filter(x => x.id !== t.id)
+
+                    saveState()
+                }
+
+                let drag = null, startY = 0, base = 0
+
+                function onDown(e, t) {
+                    saveHistory()
+                    systemBackup = snapshot()
+                    drag = t
+                    t.dragging = true
+                    startY = e.clientY
+                    base = t.start
+                }
+
+                function onMove(e) {
+                    if (!drag) return
+                    const d = (e.clientY - startY) / pxPerMin
+                    const snap = Math.round(d / 15) * 15
+                    drag.start = base + snap
+                    drag.end = drag.start + drag.duration
+                }
+
+                function onUp() {
+                    if (!drag) return
+
+                    const resolved = resolveCopy(tasks.value, drag)
+
+                    if (outOfRange(resolved)) {
+                        restore()
+
+                        undoStack.value.pop()
+
+                        tasks.value.forEach(t => t.dragging = false)
+
+                        drag = null
+                        systemBackup = null
+
+                        setTimeout(() => {
+                            tasks.value.forEach(t => t.dragging = false)
+                        })
+
+                        alert("範囲外のため元に戻しました")
+                        return
+                    }
+
+                    tasks.value = resolved
+
+                    tasks.value.forEach(t => t.dragging = false)
+
+                    saveState()
+
+                    drag = null
+                    systemBackup = null
+                }
+
+                function handleGlobalMouseUp() { onUp() }
+
+                onMounted(() => {
+                    loadState()
+
+                    window.addEventListener('keydown', handleKey)
+                    window.addEventListener('mouseup', handleGlobalMouseUp)
+                })
+
+                onBeforeUnmount(() => {
+                    window.removeEventListener('keydown', handleKey)
+                    window.removeEventListener('mouseup', handleGlobalMouseUp)
+                })
+
+                function start(t) { if (!t.running) { t.running = true; t.lastStart = Date.now() } }
+                function pause(t) { if (t.running) { t.logs.push({ s: t.lastStart, e: Date.now() }); t.running = false } }
+                function resume(t) { if (!t.running) { t.running = true; t.lastStart = Date.now() } }
+                function finish(t) { if (t.running) t.logs.push({ s: t.lastStart, e: Date.now() }); t.running = false; t.done = true }
+
+                function elapsed(t) {
+                    let ms = 0
+                    for (const l of t.logs) ms += Math.max(0, l.e - l.s)
+                    if (t.running) ms += Math.max(0, now.value - t.lastStart)
+                    return Math.max(0, ms)
+                }
+
+                function plan(t) { return t.duration * 60000 }
+                function remain(t) { return Math.max(plan(t) - elapsed(t), 0) }
+
+                function prog(t) {
+                    const p = plan(t)
+                    if (p <= 0) return 0
+                    return Math.min(Math.max(elapsed(t) / p, 0), 1)
+                }
+
+                function fmt(ms) {
+                    ms = Math.max(0, ms)
+                    const s = Math.floor(ms / 1000)
+                    return Math.floor(s / 60) + "m " + (s % 60) + "s"
+                }
+
+                function fmtHM(m) {
+                    return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0")
+                }
+
+                function status(t) {
+                    if (t.done) return "done"
+                    if (t.running) return "running"
+                    if (t.logs.length) return "paused"
+                    return "idle"
+                }
+
+                function statusText(t) {
+                    return { idle: "未開始", running: "実行中", paused: "中断", done: "完了" }[status(t)]
+                }
+
+                function style(t) {
+                    return {
+                        top: (t.start - dayStart) * pxPerMin + 'px',
+                        height: t.duration * pxPerMin + 'px'
+                    }
+                }
+
+                return {
+                    tasks, sortedTasks,
+                    openModal, create, removeTask,
+                    show, name, w,
+                    onDown, onMove, onUp,
+                    style, nowPos, pxPerMin,
+                    dayStart, dayEnd,
+                    start, pause, resume, finish,
+                    elapsed, remain, prog, fmt, fmtHM,
+                    status, statusText,
+                    undo, redo,
+                    toggle,
+                    fileInput,
+                    exportFile,
+                    importFile,
+                    triggerImport,
+                    store
+                }
+
+            }
+        }).mount("#app")
+    </script>
+
+</body>
+
+</html>
