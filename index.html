@@ -79,6 +79,7 @@
             cursor: grab;
             box-sizing: border-box;
             border: 1px solid #333;
+            touch-action: none;
         }
 
         .task.dragging {
@@ -239,7 +240,7 @@
         </div>
 
         <!-- ★ここだけ構造追加 -->
-        <div class="timeline" @mousemove="onMove" @mouseup="onUp">
+        <div class="timeline" @pointermove="onMove" @pointerup="onUp">
             <div class="timeline-inner" :style="{height:(dayEnd-dayStart)*pxPerMin+'px'}">
 
                 <div v-for="h in 16" class="time-line" :style="{top:((h-1)*60*pxPerMin)+'px'}">
@@ -249,9 +250,9 @@
                 <div class="now-line" :style="{top:nowPos+'px'}"></div>
 
                 <div v-for="t in tasks" class="task" :class="[status(t), {dragging:t.dragging}]" :style="style(t)"
-                    @mousedown="onDown($event,t)">
+                    @pointerdown="onDown($event,t)">
 
-                    <button class="delete-btn" @mousedown.stop @click="removeTask(t)">×</button>
+                    <button class="delete-btn" @pointerdown.stop @click="removeTask(t)">×</button>
                     {{t.name}}
                 </div>
 
@@ -640,12 +641,12 @@
                     loadState()
 
                     window.addEventListener('keydown', handleKey)
-                    window.addEventListener('mouseup', handleGlobalMouseUp)
+                    window.addEventListener('pointerup', handleGlobalMouseUp)
                 })
 
                 onBeforeUnmount(() => {
                     window.removeEventListener('keydown', handleKey)
-                    window.removeEventListener('mouseup', handleGlobalMouseUp)
+                    window.removeEventListener('pointerup', handleGlobalMouseUp)
                 })
 
                 function start(t) { if (!t.running) { t.running = true; t.lastStart = Date.now() } }
